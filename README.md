@@ -31,6 +31,7 @@ conda create -n l3mvn
 conda install habitat-sim-challenge-2022 headless -c conda-forge -c aihabitat -n l3mvn
 conda activate l3mvn
 python -m habitat_sim.utils.datasets_download --username <api-token-id> --password <api-token-secret> --uids hm3d --data-path l3mvn/data
+ln -s -f ../versioned_data/hm3d-1.0/hm3d l3mvn/data/scene_datasets/hm3d
 ```
 3. Download segmentation model from [here](https://drive.google.com/file/d/1U0dS44DIPZ22nTjw0RfO431zV-lMPcvv/view?usp=share_link). Put the downloaded file in l3mvn/data.
 
