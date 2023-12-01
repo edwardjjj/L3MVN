@@ -18,6 +18,48 @@ Visual target navigation in unknown environments is a crucial problem in robotic
 - Python 3.7
 - [habitat-lab](https://github.com/facebookresearch/habitat-lab) -->
 
+## Docker
+
+1. Clone repository
+```
+git clone https://github.com/edwardjjj/l3mvn.git l3mvn
+```
+
+2. Install utility function to download hm3d dataset
+```
+conda create -n l3mvn
+conda install habitat-sim-challenge-2022 headless -c conda-forge -c aihabitat -n l3mvn
+conda activate l3mvn
+python -m habitat_sim.utils.datasets_download --username <api-token-id> --password <api-token-secret> --uids hm3d --data-path l3mvn/data
+```
+3. Download segmentation model from [here](https://drive.google.com/file/d/1U0dS44DIPZ22nTjw0RfO431zV-lMPcvv/view?usp=share_link). Put the downloaded file in l3mvn/data.
+
+4. Download test set from [here](https://dl.fbaipublicfiles.com/habitat/data/datasets/objectnav/hm3d/v1/objectnav_hm3d_v1.zip). Unzip and rename the folder to objectgoal_hm3d and place it in l3mvn/data
+
+5. Build Docker image
+```
+docker build -t l3mvn:1.0 .
+```
+6. Run the image
+```
+docker run --gpus all -v .:/home/app -it l3mvn:1.0
+```
+inside the container run the following to test the feed-forward method
+```
+. activate habitat
+python main_llm_vis.py --split val --eval 1 --auto_gpu_config 0 \
+-n 8 --num_eval_episodes 250 --load pretrained_models/llm_model.pt \
+--use_gtsem 0 --num_local_steps 10
+```
+run the following to test the zero-shot method
+```
+. activate habitat
+python main_llm_zeroshot.py --split val --eval 1 --auto_gpu_config 0 \
+-n 5 --num_eval_episodes 400 --num_processes_on_first_gpu 5 \
+--use_gtsem 0 --num_local_steps 10 --exp_name exp_llm_hm3d_zero \
+```
+
+
 ## Installation
 
 The code has been tested only with Python 3.7 on Ubuntu 20.04.
