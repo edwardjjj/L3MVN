@@ -46,6 +46,7 @@ docker run --gpus all -v .:/home/app -it l3mvn:1.0
 ```
 inside the container run the following to test the feed-forward method
 ```
+cd l3mvn
 . activate habitat
 python main_llm_vis.py --split val --eval 1 --auto_gpu_config 0 \
 -n 8 --num_eval_episodes 250 --load pretrained_models/llm_model.pt \
@@ -53,6 +54,7 @@ python main_llm_vis.py --split val --eval 1 --auto_gpu_config 0 \
 ```
 run the following to test the zero-shot method
 ```
+cd l3mvn
 . activate habitat
 python main_llm_zeroshot.py --split val --eval 1 --auto_gpu_config 0 \
 -n 5 --num_eval_episodes 400 --num_processes_on_first_gpu 5 \
