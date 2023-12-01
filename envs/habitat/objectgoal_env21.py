@@ -230,7 +230,7 @@ class ObjectGoal_Env21(habitat.RLEnv):
     
         # se = list(set(semantic.ravel()))
         # print("semantic: ", se) # []
-        # semantic = np.expand_dims(semantic.astype(np.uint8), 2)
+        semantic = np.expand_dims(semantic.astype(np.uint8), 2)
         return semantic.astype(np.uint8)
 
     def get_reward_range(self):
