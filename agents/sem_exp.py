@@ -296,8 +296,8 @@ class Sem_Exp_Env_Agent(ObjectGoal_Env21):
         if replan:
             self.replan_count += 1
             print("false: ", self.replan_count)
-        else:
-            self.replan_count = 0
+        # else:
+        #    self.replan_count = 0
 
         # Deterministic Local Policy
         if (stop and planner_inputs['found_goal'] == 1) or self.replan_count > 26:
