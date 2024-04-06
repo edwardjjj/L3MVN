@@ -26,7 +26,6 @@ from gym.spaces.dict import Dict as SpaceDict
 # from gym.spaces.dict_spaced import Dict as SpaceDict
 
 import habitat
-from habitat.config import Config
 from habitat.core.env import Env, Observations, RLEnv
 from habitat.core.logging import logger
 from habitat.core.utils import tile_images
@@ -56,7 +55,7 @@ GET_METRICS = "get_metrics"
 
 
 def _make_env_fn(
-    config: Config, dataset: Optional[habitat.Dataset] = None, rank: int = 0
+    config, dataset: Optional[habitat.Dataset] = None, rank: int = 0
 ) -> Env:
     """Constructor for default habitat `env.Env`.
 
@@ -138,27 +137,20 @@ class VectorEnv:
 
         for write_fn in self._connection_write_fns:
             write_fn((OBSERVATION_SPACE_COMMAND, None))
-        self.observation_spaces = [
-            read_fn() for read_fn in self._connection_read_fns
-        ]
+        self.observation_spaces = [read_fn() for read_fn in self._connection_read_fns]
         for write_fn in self._connection_write_fns:
             write_fn((ACTION_SPACE_COMMAND, None))
-        self.action_spaces = [
-            read_fn() for read_fn in self._connection_read_fns
-        ]
+        self.action_spaces = [read_fn() for read_fn in self._connection_read_fns]
         for write_fn in self._connection_write_fns:
             write_fn((NUMBER_OF_EPISODES_COMMAND, None))
-        self.number_of_episodes = [
-            read_fn() for read_fn in self._connection_read_fns
-        ]
+        self.number_of_episodes = [read_fn() for read_fn in self._connection_read_fns]
         self.observation_space = self.observation_spaces[0]
         self.action_space = self.action_spaces[0]
         self._paused = []
 
     @property
     def num_envs(self):
-        r"""number of individual environments.
-        """
+        r"""number of individual environments."""
         return self._num_envs - len(self._paused)
 
     @staticmethod
@@ -171,8 +163,7 @@ class VectorEnv:
         child_pipe: Optional[Connection] = None,
         parent_pipe: Optional[Connection] = None,
     ) -> None:
-        r"""process worker for creating and interacting with the environment.
-        """
+        r"""process worker for creating and interacting with the environment."""
         env = env_fn(*env_fn_args)
         if parent_pipe is not None:
             parent_pipe.close()
@@ -181,9 +172,7 @@ class VectorEnv:
             while command != CLOSE_COMMAND:
                 if command == STEP_COMMAND:
                     # different step methods for habitat.RLEnv and habitat.Env
-                    if isinstance(env, habitat.RLEnv) or isinstance(
-                        env, gym.Env
-                    ):
+                    if isinstance(env, habitat.RLEnv) or isinstance(env, gym.Env):
                         # habitat.RLEnv
                         observations, reward, done, info = env.step(**data)
                         if auto_reset_done and done:
@@ -226,8 +215,7 @@ class VectorEnv:
                     connection_write_fn(env.current_episode)
 
                 elif command == PLAN_ACT_AND_PREPROCESS:
-                    observations, reward, done, info = \
-                            env.plan_act_and_preprocess(data)
+                    observations, reward, done, info = env.plan_act_and_preprocess(data)
                     if auto_reset_done and done:
                         observations, info = env.reset()
                     connection_write_fn((observations, reward, done, info))
@@ -384,8 +372,7 @@ class VectorEnv:
             write_fn((STEP_COMMAND, args))
 
     def step_wait(self) -> List[Observations]:
-        r"""Wait until all the asynchronized environments have synchronized.
-        """
+        r"""Wait until all the asynchronized environments have synchronized."""
         results = []
         for read_fn in self._connection_read_fns:
             results.append(read_fn())
@@ -445,8 +432,7 @@ class VectorEnv:
         self._paused.append((index, read_fn, write_fn, worker))
 
     def resume_all(self) -> None:
-        r"""Resumes any paused envs.
-        """
+        r"""Resumes any paused envs."""
         for index, read_fn, write_fn, worker in reversed(self._paused):
             self._connection_read_fns.insert(index, read_fn)
             self._connection_write_fns.insert(index, write_fn)
@@ -494,9 +480,7 @@ class VectorEnv:
             function_args_list = [None] * len(function_names)
         assert len(function_names) == len(function_args_list)
         func_args = zip(function_names, function_args_list)
-        for write_fn, func_args_on in zip(
-            self._connection_write_fns, func_args
-        ):
+        for write_fn, func_args_on in zip(self._connection_write_fns, func_args):
             write_fn((CALL_COMMAND, func_args_on))
         results = []
         for read_fn in self._connection_read_fns:
@@ -504,11 +488,8 @@ class VectorEnv:
         self._is_waiting = False
         return results
 
-    def render(
-        self, mode: str = "human", *args, **kwargs
-    ) -> Union[np.ndarray, None]:
-        r"""Render observations from all environments in a tiled image.
-        """
+    def render(self, mode: str = "human", *args, **kwargs) -> Union[np.ndarray, None]:
+        r"""Render observations from all environments in a tiled image."""
         for write_fn in self._connection_write_fns:
             write_fn((RENDER_COMMAND, (args, {"mode": "rgb", **kwargs})))
         images = [read_fn() for read_fn in self._connection_read_fns]
@@ -539,7 +520,9 @@ class VectorEnv:
         return np.stack(obs), rews, np.stack(dones), infos
 
     def _assert_not_closed(self):
-        assert not self._is_closed, "Trying to operate on a SubprocVecEnv after calling close()"
+        assert (
+            not self._is_closed
+        ), "Trying to operate on a SubprocVecEnv after calling close()"
 
     @property
     def _valid_start_methods(self) -> Set[str]:

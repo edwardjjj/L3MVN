@@ -1,18 +1,14 @@
-import json
-import bz2
-import gzip
-import _pickle as cPickle
-import gym
+from typing import Tuple
+
+import habitat
 import numpy as np
 import quaternion
-import skimage.morphology
-import habitat
 
-from envs.utils.fmm_planner import FMMPlanner
-from constants import category_to_id, mp3d_category_id
 import envs.utils.pose as pu
+from constants import category_to_id, mp3d_category_id
 
 coco_categories = [0, 3, 2, 4, 5, 1]
+
 
 class ObjectGoal_Env21(habitat.RLEnv):
     """The Object Goal Navigation environment class. The class is responsible
@@ -48,35 +44,35 @@ class ObjectGoal_Env21(habitat.RLEnv):
         # Episode tracking info
         self.curr_distance = None
         self.prev_distance = None
-        self.timestep = None
+        self.timestep = 0
         self.stopped = None
         self.path_length = None
         self.last_sim_location = None
         self.trajectory_states = []
         self.info = {}
-        self.info['distance_to_goal'] = None
-        self.info['spl'] = None
-        self.info['success'] = None
+        self.info["distance_to_goal"] = None
+        self.info["spl"] = None
+        self.info["success"] = None
 
         # self.scene = self._env.sim.semantic_annotations()
 
-        fileName = 'data/matterport_category_mappings.tsv'
+        fileName = "data/matterport_category_mappings.tsv"
 
-        text = ''
+        text = ""
         lines = []
         items = []
-        self.hm3d_semantic_mapping={}
+        self.hm3d_semantic_mapping = {}
 
-        with open(fileName, 'r') as f:
+        with open(fileName, "r") as f:
             text = f.read()
-        lines = text.split('\n')
+        lines = text.split("\n")
 
-        for l in lines:
-            items.append(l.split('    '))
+        for line in lines:
+            items.append(line.split("    "))
 
-        for i in items:
-            if len(i) > 3:
-                self.hm3d_semantic_mapping[i[2]] = i[-1]
+        for item in items:
+            if len(item) > 3:
+                self.hm3d_semantic_mapping[item[2]] = item[-1]
 
         # print()
 
@@ -86,6 +82,10 @@ class ObjectGoal_Env21(habitat.RLEnv):
         #             f"Object id:{obj.id}, category:{obj.category.name()}, index:{obj.category.index()}"
         #             f" center:{obj.aabb.center}, dims:{obj.aabb.sizes}"
         #         )
+
+    @property
+    def observation_spaces(self):
+        return self.observation_space
 
     def reset(self):
         """Resets the environment to a new episode.
@@ -97,7 +97,6 @@ class ObjectGoal_Env21(habitat.RLEnv):
         """
         args = self.args
         # new_scene = self.episode_no % args.num_train_episodes == 0
-
 
         self.episode_no += 1
 
@@ -122,7 +121,6 @@ class ObjectGoal_Env21(habitat.RLEnv):
         #         floor_height.append(abs(obj.aabb.center[1] - start_height))
         #         floor_size.append(obj.aabb.sizes[0]*obj.aabb.sizes[2])
 
-        
         # if not args.eval:
         #     while all(h > 0.1 or s < 12 for (h,s) in zip(floor_height, floor_size)) or abs(start_height-goal_height) > 1.2:
         #         obs = super().reset()
@@ -142,11 +140,10 @@ class ObjectGoal_Env21(habitat.RLEnv):
         self.prev_distance = self._env.get_metrics()["distance_to_goal"]
         self.starting_distance = self._env.get_metrics()["distance_to_goal"]
 
-
         # print("obs: ,", obs)
         # print("obs shape: ,", obs.shape)
-        rgb = obs['rgb'].astype(np.uint8)
-        depth = obs['depth']
+        rgb = obs["rgb"].astype(np.uint8)
+        depth = obs["depth"]
         semantic = self._preprocess_semantic(obs["semantic"])
         # print("rgb shape: ,", rgb.shape)
         # print("depth shape: ,", depth.shape)
@@ -156,12 +153,16 @@ class ObjectGoal_Env21(habitat.RLEnv):
         self.last_sim_location = self.get_sim_location()
 
         # Set info
-        self.info['time'] = self.timestep
-        self.info['sensor_pose'] = [0., 0., 0.]
-        self.info['goal_cat_id'] = coco_categories[obs['objectgoal'][0]]
-        self.info['goal_name'] = category_to_id[obs['objectgoal'][0]]
+        # self.info.timestep = self.timestep
+        # self.info.sensor_pose = np.zeros(3)
+        # self.info.goal_cat_id = coco_categories[obs["objectgoal"][0]]
+        # self.info.goal_name = category_to_id[obs["objectgoal"][0]]
+        self.info["timestep"] = self.timestep
+        self.info["sensor_pose"] = [0.0, 0.0, 0.0]
+        self.info["goal_cat_id"] = coco_categories[obs["objectgoal"][0]]
+        self.info["goal_name"] = category_to_id[obs["objectgoal"][0]]
 
-        self.goal_name = category_to_id[obs['objectgoal'][0]]
+        self.goal_name = category_to_id[obs["objectgoal"][0]]
 
         return state, self.info
 
@@ -190,23 +191,22 @@ class ObjectGoal_Env21(habitat.RLEnv):
 
         # Get pose change
         dx, dy, do = self.get_pose_change()
-        self.info['sensor_pose'] = [dx, dy, do]
+        self.info["sensor_pose"] = [dx, dy, do]
         self.path_length += pu.get_l2_distance(0, dx, 0, dy)
 
-        spl, success, dist = 0., 0., 0.
         if done:
             spl, success, dist = self.get_metrics()
-            self.info['distance_to_goal'] = dist
-            self.info['spl'] = spl
-            self.info['success'] = success
+            self.info["distance_to_goal"] = dist
+            self.info["spl"] = spl
+            self.info["success"] = success
 
-        rgb = obs['rgb'].astype(np.uint8)
-        depth = obs['depth']
+        rgb = obs["rgb"].astype(np.uint8)
+        depth = obs["depth"]
         semantic = self._preprocess_semantic(obs["semantic"])
         state = np.concatenate((rgb, depth, semantic), axis=2).transpose(2, 0, 1)
 
         self.timestep += 1
-        self.info['time'] = self.timestep
+        self.info["timestep"] = self.timestep
 
         return state, rew, done, self.info
 
@@ -216,50 +216,50 @@ class ObjectGoal_Env21(habitat.RLEnv):
         # print(se) # []
         for i in range(len(se)):
             if self.scene.objects[se[i]].category.name() in self.hm3d_semantic_mapping:
-                hm3d_category_name = self.hm3d_semantic_mapping[self.scene.objects[se[i]].category.name()]
+                hm3d_category_name = self.hm3d_semantic_mapping[
+                    self.scene.objects[se[i]].category.name()
+                ]
             else:
                 hm3d_category_name = self.scene.objects[se[i]].category.name()
 
             if hm3d_category_name in mp3d_category_id:
                 # print("sum: ", np.sum(sem_output[sem_output==se[i]])/se[i])
-                semantic[semantic==se[i]] = mp3d_category_id[hm3d_category_name]-1
-            else :
-                semantic[
-                    semantic==se[i]
-                    ] = 0
-    
+                semantic[semantic == se[i]] = mp3d_category_id[hm3d_category_name] - 1
+            else:
+                semantic[semantic == se[i]] = 0
+
         # se = list(set(semantic.ravel()))
         # print("semantic: ", se) # []
-        semantic = np.expand_dims(semantic.astype(np.uint8), 2)
+        # semantic = np.expand_dims(semantic.astype(np.uint8), 2)
         return semantic.astype(np.uint8)
 
     def get_reward_range(self):
         """This function is not used, Habitat-RLEnv requires this function"""
-        return (0., 1.0)
+        return (0.0, 1.0)
 
     def get_reward(self, observations):
-        self.curr_distance = self._env.get_metrics()['distance_to_goal']
+        self.curr_distance = self._env.get_metrics()["distance_to_goal"]
 
-        reward = (self.prev_distance - self.curr_distance) * \
-            self.args.reward_coeff
+        reward = (self.prev_distance - self.curr_distance) * self.args.reward_coeff
 
         self.prev_distance = self.curr_distance
         return reward
 
     def get_llm_distance(self, target_point_map, frontier_loc_g):
-
-        frontier_dis_g = self.gt_planner.fmm_dist[frontier_loc_g[0],
-                                                frontier_loc_g[1]] / 20.0
-        tpm = len(list(set(target_point_map.ravel()))) -1
+        frontier_dis_g = (
+            self.gt_planner.fmm_dist[frontier_loc_g[0], frontier_loc_g[1]] / 20.0
+        )
+        tpm = len(list(set(target_point_map.ravel()))) - 1
         for lay in range(tpm):
-            frontier_loc = np.argwhere(target_point_map == lay+1)
-            frontier_distance = self.gt_planner.fmm_dist[frontier_loc[0],
-                                                      frontier_loc[1]] / 20.0
+            frontier_loc = np.argwhere(target_point_map == lay + 1)
+            frontier_distance = (
+                self.gt_planner.fmm_dist[frontier_loc[0], frontier_loc[1]] / 20.0
+            )
             if frontier_distance > frontier_dis_g:
                 return 0
         return 1
-        
-    def get_metrics(self):
+
+    def get_metrics(self) -> Tuple[float, bool, float]:
         """This function computes evaluation metrics for the Object Goal task
 
         Returns:
@@ -270,16 +270,17 @@ class ObjectGoal_Env21(habitat.RLEnv):
                         from the success threshold boundary in meters.
                         (See https://arxiv.org/pdf/2007.00643.pdf)
         """
-        dist = self._env.get_metrics()['distance_to_goal']
+        dist = self._env.get_metrics()["distance_to_goal"]
         if dist < 0.1:
-            success = 1
+            success = True
         else:
-            success = 0
-        spl = min(success * self.starting_distance / self.path_length, 1)
+            success = False
+
+        spl = min(int(success) * self.starting_distance / self.path_length, 1)
         return spl, success, dist
 
     def get_done(self, observations):
-        if self.info['time'] >= self.args.max_episode_length - 1:
+        if self.info["timestep"] >= self.args.max_episode_length - 1:
             done = True
         elif self.stopped:
             done = True
@@ -289,12 +290,11 @@ class ObjectGoal_Env21(habitat.RLEnv):
         return done
 
     def _episode_success(self):
-        return self._env.get_metrics()['success']
+        return self._env.get_metrics()["success"]
 
     def get_info(self, observations):
         """This function is not used, Habitat-RLEnv requires this function"""
-        info = {}
-        return info
+        return self.info
 
     def get_sim_location(self):
         """Returns x, y, o pose of the agent in the Habitat simulator."""
@@ -303,8 +303,7 @@ class ObjectGoal_Env21(habitat.RLEnv):
         x = -agent_state.position[2]
         y = -agent_state.position[0]
         axis = quaternion.as_euler_angles(agent_state.rotation)[0]
-        if (axis % (2 * np.pi)) < 0.1 or (axis %
-                                          (2 * np.pi)) > 2 * np.pi - 0.1:
+        if (axis % (2 * np.pi)) < 0.1 or (axis % (2 * np.pi)) > 2 * np.pi - 0.1:
             o = quaternion.as_euler_angles(agent_state.rotation)[1]
         else:
             o = 2 * np.pi - quaternion.as_euler_angles(agent_state.rotation)[1]
@@ -316,7 +315,6 @@ class ObjectGoal_Env21(habitat.RLEnv):
         """Returns dx, dy, do pose change of the agent relative to the last
         timestep."""
         curr_sim_pose = self.get_sim_location()
-        dx, dy, do = pu.get_rel_pose_change(
-            curr_sim_pose, self.last_sim_location)
+        dx, dy, do = pu.get_rel_pose_change(curr_sim_pose, self.last_sim_location)
         self.last_sim_location = curr_sim_pose
         return dx, dy, do
