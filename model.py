@@ -1,17 +1,17 @@
+from typing import Any, Dict, List, Tuple
+
+import cv2
 import numpy as np
 import torch
 import torch.nn as nn
-
-# from utils.distributions import Categorical, DiagGaussian
-from torch.distributions.categorical import Categorical
+from sklearn.cluster import DBSCAN, HDBSCAN
 from torch.nn import functional as F
 
 import envs.utils.depth_utils as du
-from utils.model import ChannelPool, Flatten, NNBase, get_grid
+from utils.model import ChannelPool, get_grid
 
 
 class Semantic_Mapping(nn.Module):
-
     """
     Semantic_Mapping
     """
@@ -295,3 +295,154 @@ class FeedforwardNet(nn.Module):
 
     def forward(self, x):
         return self.layers(x)
+
+
+class SemanticClusteringRawPixel:
+    def __init__(self, args):
+        self.cluster = DBSCAN(eps=10, min_samples=50)
+
+    def __call__(self, semantic_map: np.ndarray) -> List[List[Dict]]:
+        num_batch, channels, height, width = semantic_map.shape
+        semantic_cluster_list = []
+        for batch in range(num_batch):
+            batch_semantic_map = semantic_map[batch]  # (C x H x W)
+            zero_map = np.zeros([1, height, width])
+            batch_semantic_map = np.concatenate([zero_map, batch_semantic_map], axis=0)
+            # labels will be shifted by 1, 0 represents empty spot
+            labeled_map = batch_semantic_map.argmax(0)
+            occupancy_list = np.asarray(zip(*np.where(batch_semantic_map.sum(0) != 0)))
+
+            cluster_instance = self.cluster.fit(occupancy_list)
+            semantic_cluster_list.append(
+                self._construct_cluster_info_list(
+                    cluster_instance,
+                    occupancy_list,
+                    labeled_map,
+                )
+            )
+        return semantic_cluster_list
+
+    def _construct_cluster_info_list(
+        self,
+        cluster_instance: Any,
+        occupancy_list: np.ndarray,
+        labeled_map: np.ndarray,
+    ) -> List[Dict]:
+        cluster_labels = cluster_instance.labels_
+        unique_cluster_labels = np.unique(cluster_labels)
+        cluster_info_list = []
+
+        # construct one ClusterInfo for every unique cluster
+        # contains coordinates of centroid: (h, w)
+        # and list of unique object labels
+        for label in unique_cluster_labels:
+            # label of -1 indicates outliers
+            if label != -1:
+                members = occupancy_list[cluster_labels == label]
+                cluster_centroid = np.asarray(members).mean(axis=0)
+
+                unique_object_labels = set()
+                for member in members:
+                    unique_object_labels.add(
+                        self._find_object_category(labeled_map, member)
+                    )
+                cluster_info_list.append(
+                    {
+                        "centroid": list(map(int, cluster_centroid)),
+                        "unique_object_labels": list(unique_object_labels),
+                    }
+                )
+        return cluster_info_list
+
+    def _find_object_category(
+        self, labeled_map: np.ndarray, coord: Tuple[int, int]
+    ) -> int:
+        h, w = coord
+        return int(labeled_map[h][w])
+
+
+class SemanticClusteringCentroids:
+    def __init__(self, args):
+        self.cluster = HDBSCAN(min_cluster_size=args.min_cluster_size)
+
+    def __call__(self, semantic_map: np.ndarray) -> List[List[Dict]]:
+        """Generate object clusters from semantic occupancy map
+
+        Args:
+            semantic_map (Batch x Channel x Height x Width): each channel refer to a predefined object category
+        Return:
+            semantic_cluster_list: list of object clusters for LLM evaluation
+        """
+        num_batch = semantic_map.shape[0]
+        semantic_cluster_list = []
+        for batch in range(num_batch):
+            batch_semantic_map = semantic_map[batch]  # (C x H x W)
+            occupancy_map = np.any(batch_semantic_map, axis=0)  # (H x W)
+
+            num_labels, labeled_map, stats, object_centroids = (
+                cv2.connectedComponentsWithStats(occupancy_map.astype("uint8"))
+            )
+            object_centroids = object_centroids[1:]
+            object_locations = []
+            for i in labeled_map[1:]:
+                locations = np.asarray(zip(*np.where(labeled_map == i)))
+                mid_location = locations[locations.shape[0] // 2]
+                object_locations.append(mid_location)
+
+            object_locations = np.asarray(object_locations)
+            if len(object_centroids) >= 3:
+                cluster_instance = self.cluster.fit(object_centroids)
+                semantic_cluster_list.append(
+                    self._construct_cluster_info_list(
+                        cluster_instance,
+                        object_centroids,
+                        object_locations,
+                        batch_semantic_map,
+                    )
+                )
+            else:
+                semantic_cluster_list.append([])
+        return semantic_cluster_list
+
+    def _construct_cluster_info_list(
+        self,
+        cluster_instance: Any,
+        object_centroids: np.ndarray,
+        object_locations: np.ndarray,
+        semantic_map: np.ndarray,
+    ) -> List[Dict]:
+        cluster_labels = cluster_instance.labels_
+        unique_cluster_labels = np.unique(cluster_labels)
+        cluster_info_list = []
+
+        # construct one ClusterInfo for every unique cluster
+        # contains coordinates of centroid: (h, w)
+        # and list of unique object labels
+        for label in unique_cluster_labels:
+            # label of -1 indicates outliers
+            if label != -1:
+                members = object_centroids[cluster_labels == label]
+                cluster_centroid = members.mean(axis=0)
+                members_location = object_locations[cluster_labels == label]
+
+                unique_object_labels = set()
+                for member in members_location:
+                    unique_object_labels.add(
+                        self._find_object_category(semantic_map, member)
+                    )
+                cluster_info_list.append(
+                    {
+                        "centroid": list(map(int, cluster_centroid)),
+                        "unique_object_labels": list(unique_object_labels),
+                    }
+                )
+        return cluster_info_list
+
+    def _find_object_category(
+        self, semantic_map: np.ndarray, coord: Tuple[int, int]
+    ) -> int:
+        h, w = map(int, coord)
+        if semantic_map[:, h, w].max() == 0:
+            return -1
+        else:
+            return int(semantic_map[:, h, w].argmax())  # type: ignore
