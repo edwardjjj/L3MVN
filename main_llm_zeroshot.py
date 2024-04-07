@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from collections import defaultdict, deque
+from typing import Dict
 
 import cv2
 import matplotlib.pyplot as plt
@@ -23,7 +24,7 @@ from transformers import (
 )
 
 from arguments import get_args
-from constants import category_to_id, hm3d_category
+from constants import category_to_id, hm3d_category, hm3d_category_id
 from envs import make_vec_envs
 from envs.utils.fmm_planner import FMMPlanner
 from model import Semantic_Mapping, SemanticClusteringCentroids
@@ -88,6 +89,7 @@ def main():
             episode_success.append(deque(maxlen=num_episodes))
             episode_spl.append(deque(maxlen=num_episodes))
             episode_dist.append(deque(maxlen=num_episodes))
+            visualizaiton_cluster.append([])
 
     episode_sem_frontier = []
     episode_sem_goal = []
@@ -492,6 +494,7 @@ def main():
 
     # HDBSCAN module
     sem_cluster_module = SemanticClusteringCentroids(args)
+    cluster_id2category = {v: k for k, v in hm3d_category_id.items()}
 
     # Predict semantic map from frame 1
     poses = (
@@ -571,15 +574,19 @@ def main():
                 dist = infos[e]["distance_to_goal"]
                 spl_per_category[infos[e]["goal_name"]].append(spl)
                 success_per_category[infos[e]["goal_name"]].append(success)
-                cluster = sem_cluster_module(
-                    full_map[e : e + 1, 4:, :, :].detach().cpu().numpy()
-                )[0]
+                cluster_list = sem_cluster_module(
+                    full_map[e, 4:, :, :].detach().cpu().numpy()
+                )
+                cluster_list_with_names = [
+                    cluster_label2name(cluster, cluster_id2category)
+                    for cluster in cluster_list
+                ]
                 if args.eval:
                     episode_success[e].append(success)
                     episode_spl[e].append(spl)
                     episode_dist[e].append(dist)
-                    visualizaiton_cluster.append(cluster)
-                    filename = f"process{e}_map.png"
+                    visualizaiton_cluster[e].append(cluster_list_with_names)
+                    # filename = f"process{e}_map.png"
                     # draw_map(full_map[e, 4:, :, :].argmax(0).detach().cpu().numpy(), filename)
                     if len(episode_success[e]) == num_episodes:
                         finished[e] = 1
@@ -659,9 +666,13 @@ def main():
                     local_pose[e] + torch.from_numpy(origins[e]).to(device).float()
                 )
 
-                # semantic_cluster_list = sem_cluster_module(
-                #     full_map[:, 4:, :, :].detach().cpu().numpy()
-                # )
+                semantic_cluster_list = sem_cluster_module(
+                    full_map[e, 4:, :, :].detach().cpu().numpy()
+                )
+                semantic_cluster_list_with_names = [
+                    cluster_label2name(cluster, cluster_id2category)
+                    for cluster in semantic_cluster_list
+                ]
                 locs = full_pose[e].cpu().numpy()
                 r, c = locs[1], locs[0]
                 loc_r, loc_c = [
@@ -1021,6 +1032,21 @@ def draw_map(map, filename):
     cax = ax.imshow(map, cmap=cmap, vmin=0, vmax=15)
     cbar = fig.colorbar(cax, ticks=np.arange(16), spacing="proportional")
     plt.savefig(filename)
+
+
+def cluster_label2name(cluster_info: Dict, id2category: Dict) -> Dict:
+    cluster_object_names = []
+    unique_object_labels = cluster_info["unique_object_labels"]
+    cluster_info_with_name = {}
+    cluster_info_with_name["centroid"] = cluster_info["centroid"]
+    if len(unique_object_labels) == 0:
+        cluster_info_with_name["object_names"] = []
+    else:
+        for object_label in unique_object_labels:
+            object_name = id2category[object_label]
+            cluster_object_names.append(object_name)
+        cluster_info_with_name["object_names"] = cluster_object_names
+    return cluster_info_with_name
 
 
 if __name__ == "__main__":

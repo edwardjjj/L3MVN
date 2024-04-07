@@ -44,23 +44,41 @@ mp3d_category_id = {
 mp_categories_mapping = [4, 11, 15, 12, 19, 23, 26, 24, 28, 38, 21, 16, 14, 6, 17]
 # chair, sofa, plant, bed, toilet, tv_monitor, bathtub, shower, fireplace, appliances, towel, sink, chest_of_drawers, table, sink
 hm3d_category = [
-    "chair", # 0
-    "sofa", # 1
-    "plant", # 2
-    "bed", # 3
-    "toilet", # 4
-    "tv_monitor", # 5
-    "bathtub", # 6
-    "shower", # 7
-    "fireplace", # 8
-    "appliances", # 9
-    "towel", # 10
-    "sink", # 11
-    "chest_of_drawers", # 12
-    "table", # 13
-    "stairs", # 14
+    "chair",  # 0
+    "sofa",  # 1
+    "plant",  # 2
+    "bed",  # 3
+    "toilet",  # 4
+    "tv_monitor",  # 5
+    "bathtub",  # 6
+    "shower",  # 7
+    "fireplace",  # 8
+    "appliances",  # 9
+    "towel",  # 10
+    "sink",  # 11
+    "chest_of_drawers",  # 12
+    "table",  # 13
+    "stairs",  # 14
 ]
 
+
+hm3d_category_id = {
+    "chair": 0,
+    "sofa": 1,
+    "plant": 2,
+    "bed": 3,
+    "toilet": 4,
+    "tv_monitor": 5,
+    "bathtub": 6,
+    "shower": 7,
+    "fireplace": 8,
+    "appliances": 9,
+    "towel": 10,
+    "sink": 11,
+    "chest_of_drawers": 12,
+    "table": 13,
+    "stairs": 14,
+}
 coco_categories_mapping = {
     56: 0,  # chair
     57: 1,  # couch
