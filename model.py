@@ -365,43 +365,40 @@ class SemanticClusteringCentroids:
     def __init__(self, args):
         self.cluster = HDBSCAN(min_cluster_size=args.min_cluster_size)
 
-    def __call__(self, semantic_map: np.ndarray) -> List[List[Dict]]:
+    def __call__(self, semantic_map: np.ndarray) -> List[Dict]:
         """Generate object clusters from semantic occupancy map
 
         Args:
-            semantic_map (Batch x Channel x Height x Width): each channel refer to a predefined object category
+            semantic_map (Channel x Height x Width): each channel refer to a predefined object category
         Return:
             semantic_cluster_list: list of object clusters for LLM evaluation
         """
-        num_batch = semantic_map.shape[0]
-        semantic_cluster_list = []
-        for batch in range(num_batch):
-            batch_semantic_map = semantic_map[batch]  # (C x H x W)
-            occupancy_map = np.any(batch_semantic_map, axis=0)  # (H x W)
+        occupancy_map = np.any(semantic_map, axis=0)  # (H x W)
 
-            num_labels, labeled_map, stats, object_centroids = (
-                cv2.connectedComponentsWithStats(occupancy_map.astype("uint8"))
+        num_labels, labeled_map, stats, object_centroids = (
+            cv2.connectedComponentsWithStats(occupancy_map.astype("uint8"))
+        )
+        if num_labels <= 1:
+            return []
+        object_centroids = object_centroids[1:]
+        object_locations = []
+        for i in range(1, num_labels):
+            locations = list(zip(*np.where(labeled_map == i)))
+            mid_location = locations[len(locations) // 2]
+            object_locations.append(mid_location)
+
+        object_locations = np.asarray(object_locations)
+        if len(object_centroids) >= 3:
+            cluster_instance = self.cluster.fit(object_centroids)
+            semantic_cluster_list = self._construct_cluster_info_list(
+                cluster_instance,
+                object_centroids,
+                object_locations,
+                semantic_map,
             )
-            object_centroids = object_centroids[1:]
-            object_locations = []
-            for i in labeled_map[1:]:
-                locations = np.asarray(zip(*np.where(labeled_map == i)))
-                mid_location = locations[locations.shape[0] // 2]
-                object_locations.append(mid_location)
 
-            object_locations = np.asarray(object_locations)
-            if len(object_centroids) >= 3:
-                cluster_instance = self.cluster.fit(object_centroids)
-                semantic_cluster_list.append(
-                    self._construct_cluster_info_list(
-                        cluster_instance,
-                        object_centroids,
-                        object_locations,
-                        batch_semantic_map,
-                    )
-                )
-            else:
-                semantic_cluster_list.append([])
+        else:
+            semantic_cluster_list = []
         return semantic_cluster_list
 
     def _construct_cluster_info_list(
@@ -432,6 +429,7 @@ class SemanticClusteringCentroids:
                     )
                 cluster_info_list.append(
                     {
+                        # centroid = [h, w]
                         "centroid": list(map(int, cluster_centroid)),
                         "unique_object_labels": list(unique_object_labels),
                     }
